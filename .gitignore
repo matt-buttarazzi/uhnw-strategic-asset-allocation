@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Simulation output CSVs, large files, not needed on GitHub
+outputs/sim_*.csv
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# VS Code settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
