@@ -8,7 +8,7 @@
 
 A quantitative portfolio construction framework analyzing how alternative investments impact long-term wealth outcomes for ultra-high-net-worth families. Using mean-variance optimization, institutional capital market assumptions, and Monte Carlo simulation, the analysis compares traditional public-market portfolios against diversified multi-asset allocations incorporating private equity, private credit, hedge funds, and real assets.
 
-Built to reflect the actual portfolio construction framework used by multifamily offices serving families with $50M+ in investable assets — including a three-tier liquidity bucket framework, PE mean reversion adjustment, and stress-tested crisis regime simulation.
+Designed to reflect portfolio construction principles commonly employed by multifamily offices serving ultra-high-net-worth families, incorporating liquidity management, alternatives allocation, and long-term capital market assumptions.
 
 ---
 
