@@ -1,18 +1,18 @@
 '''
-Author: Matthew Buttarazzi
+Author: Matthew R. Buttarazzi
 Date: May 2026
 Project: UHNW Strategic Asset Allocation with Alternatives
-Description: Data layer for the UHNW portfolio optimizer. Pulls 10 years of monthly 
-public market return data via yfinance (2013-2024) and defines institutional alternative 
-investment assumptions sourced from Cambridge Associates benchmarks. Builds the combined 
-14-asset return vector and covariance matrix used by the optimizer.
+Description: Data layer for the UHNW portfolio optimizer. Pulls monthly public market
+return data via yfinance and defines institutional alternative investment assumptions
+sourced from Cambridge Associates benchmarks. Builds the combined 14-asset return vector
+and covariance matrix used by the optimizer. All functions accept date and parameter
+arguments so they can be called from both the standalone script and the Streamlit dashboard.
 '''
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# ETF proxies for each public asset class
 TICKERS = {
     "US Large Cap":       "SPY",
     "US Small Cap":       "IWM",
@@ -26,13 +26,14 @@ TICKERS = {
     "Cash":               "SHY",
 }
 
-START_DATE = "2013-01-01"
-END_DATE   = "2024-12-31"
+# Default date range used by the standalone script
+DEFAULT_START = "2013-01-01"
+DEFAULT_END   = "2024-12-31"
 
 # CITE: Cambridge Associates Benchmarks + institutional consensus
 # DESC: Alternatives don't have daily prices so we use point estimates. Each tuple is
 # (expected_return, volatility, is_illiquid, liquidity_years). Smoothed reporting in
-# alternatives data introduces a downward bias in measured volatility, true economic
+# alternatives data introduces a downward bias in measured volatility — true economic
 # volatility is likely higher than what these figures suggest.
 ALTS_ASSUMPTIONS = {
     #                         exp_return  volatility  illiquid  liquidity_years
@@ -42,7 +43,8 @@ ALTS_ASSUMPTIONS = {
     "Real Assets":           (0.090,      0.110,      True,     7),
 }
 
-# PE returns tend to mean-revert toward their long-run average after periods of
+# CITE: Roth and Barth, Capital Allocators Podcast
+# DESC: PE returns tend to mean-revert toward their long-run average after periods of
 # outperformance. We model this as a dampening factor that pulls the forward-looking
 # PE return assumption toward PE_LONG_RUN_MEAN at a 30% reversion speed per period.
 PE_LONG_RUN_MEAN  = 0.130
@@ -66,12 +68,13 @@ ALTS_CROSS_CORR = {
     ("Hedge Funds",    "Real Assets"):    0.20,
 }
 
-def fetch_public_returns():
+
+def fetch_public_returns(start_date=DEFAULT_START, end_date=DEFAULT_END):
     # Download monthly adjusted close prices for all tickers
     raw = yf.download(
         list(TICKERS.values()),
-        start=START_DATE,
-        end=END_DATE,
+        start=start_date,
+        end=end_date,
         interval="1mo",
         auto_adjust=True,
         progress=False,
@@ -92,11 +95,13 @@ def fetch_public_returns():
     monthly_returns = raw.pct_change().dropna()
     return monthly_returns
 
+
 def compute_public_stats(monthly_returns):
     # Annualize by multiplying monthly mean and covariance by 12
     ann_returns = monthly_returns.mean() * 12
     ann_cov     = monthly_returns.cov() * 12
     return ann_returns, ann_cov
+
 
 def build_alts_series():
     returns = pd.Series(
@@ -106,6 +111,7 @@ def build_alts_series():
         {k: v[1] for k, v in ALTS_ASSUMPTIONS.items()}, name="Volatility"
     )
     return returns, vols
+
 
 def build_combined_universe(public_returns, public_cov, alts_returns, alts_vols):
     # Stack public and alternative return vectors into one combined series
@@ -125,8 +131,6 @@ def build_combined_universe(public_returns, public_cov, alts_returns, alts_vols)
     full_cov.loc[public_returns.index, public_returns.index] = public_cov
 
     # Use equity beta scaling to estimate alt-to-public covariances
-    # Each alt's covariance with a public asset is scaled by how correlated
-    # that public asset is with US Large Cap, which is our equity anchor
     us_lc_vol = np.sqrt(public_cov.loc["US Large Cap", "US Large Cap"])
     for alt, (exp_ret, vol, illiq, _) in ALTS_ASSUMPTIONS.items():
         full_cov.loc[alt, alt] = vol ** 2
@@ -150,12 +154,12 @@ def build_combined_universe(public_returns, public_cov, alts_returns, alts_vols)
     illiquid_assets = [k for k, v in ALTS_ASSUMPTIONS.items() if v[2]]
     return combined_returns, full_cov, illiquid_assets
 
+
 def print_cma_table(public_returns, public_cov, alts_returns, alts_vols):
     rows = []
 
     for asset, ret in public_returns.items():
-        vol  = np.sqrt(public_cov.loc[asset, asset])
-        # Correlation to US Large Cap — 1.0 for itself, computed for all others
+        vol = np.sqrt(public_cov.loc[asset, asset])
         if asset == "US Large Cap":
             corr = 1.0
         else:
@@ -187,6 +191,7 @@ def print_cma_table(public_returns, public_cov, alts_returns, alts_vols):
     print("\n=== CAPITAL MARKET ASSUMPTIONS ===\n")
     print(df.to_string())
     print()
+
 
 def main():
     print("Fetching public market data...")

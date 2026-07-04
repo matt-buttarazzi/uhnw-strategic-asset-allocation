@@ -1,12 +1,11 @@
 '''
-Author: Matthew Buttarazzi
+Author: Matthew R. Buttarazzi
 Date: May 2026
 Project: UHNW Strategic Asset Allocation with Alternatives
-Description: Monte Carlo simulation engine for the UHNW portfolio optimizer. Runs 10,000 correlated
-annual return paths over a 25-year horizon for four portfolios: 60/40 baseline, optimized public-only,
-UHNW with alternatives, and a stress test regime. The stress test applies elevated equity volatility,
-correlation spikes, and a PE markdown to simulate a severe market dislocation. Outputs wealth
-distribution metrics and drawdown analysis for each portfolio.
+Description: Monte Carlo simulation engine for the UHNW portfolio optimizer. All simulation
+parameters — initial wealth, horizon, number of paths, withdrawal rate — are accepted as
+function arguments so the dashboard can pass in user-selected values. Module-level constants
+serve as defaults for the standalone script only.
 '''
 
 import numpy as np
@@ -29,28 +28,26 @@ from optimizer.efficient_frontier import (
     get_6040_weights,
 )
 
-INITIAL_WEALTH    = 100_000_000  # $100M starting portfolio
-TIME_HORIZON      = 25           # 25 year generational wealth horizon
-N_SIMULATIONS     = 10_000       # number of Monte Carlo paths
-ANNUAL_WITHDRAWAL = 0.03         # 3% annual distribution rate reflects realistic UHNW spending needs
+# Default simulation parameters — used by standalone script, overridden by dashboard
+INITIAL_WEALTH    = 100_000_000
+TIME_HORIZON      = 25
+N_SIMULATIONS     = 10_000
+ANNUAL_WITHDRAWAL = 0.03
 
 # Wealth thresholds for outcome probability calculations
-WEALTH_TARGET = 500_000_000  # $500M: meaningful long-run growth
-WEALTH_FLOOR  = 50_000_000   # $50M: ruin threshold, 50% real drawdown from starting value
+WEALTH_TARGET = 500_000_000
+WEALTH_FLOOR  = 50_000_000
 
-# Stress test parameters, designed to simulate a severe dislocation similar to 2008
-# Equity vol spikes, correlations converge, bonds lose their diversification benefit, PE marks down
-STRESS_EQUITY_VOL_MULT     = 1.5   # scale equity volatility up by 50%
-STRESS_EQUITY_CORR         = 0.85  # equity-equity correlations converge toward 1
-STRESS_PE_RETURN_REDUCTION = 0.04  # PE marks down 4% due to lagged appraisal effect
-STRESS_BOND_EQUITY_CORR    = 0.20  # bonds lose most of their negative equity correlation
+# Stress test parameters — designed to simulate a severe dislocation similar to 2008
+STRESS_EQUITY_VOL_MULT     = 1.5
+STRESS_EQUITY_CORR         = 0.85
+STRESS_PE_RETURN_REDUCTION = 0.04
+STRESS_BOND_EQUITY_CORR    = 0.20
 
 
 # Constructs a stressed covariance matrix and return vector for the crisis regime.
-# Modify the base covariance matrix in place rather than rebuilding from scratch,
+# We modify the base covariance matrix in place rather than rebuilding from scratch —
 # equity variances scale up, cross-correlations spike, and PE return gets a markdown.
-# After modifying we check for positive semi-definiteness since the manual edits can
-# introduce small negative eigenvalues from floating point arithmetic.
 def build_stress_cov(combined_cov, combined_ret):
     assets     = list(combined_cov.index)
     stress_cov = combined_cov.copy().values.astype(float)
@@ -78,7 +75,7 @@ def build_stress_cov(combined_cov, combined_ret):
                 stress_cov[i, j] = STRESS_EQUITY_CORR * vol_i * vol_j
                 stress_cov[j, i] = stress_cov[i, j]
 
-    # Increase bond-equity correlation, bonds become less useful as a hedge during stress
+    # Increase bond-equity correlation — bonds become less useful as a hedge during stress
     for i in eq_idx:
         for j in bond_idx:
             vol_i = np.sqrt(stress_cov[i, i])
@@ -86,7 +83,7 @@ def build_stress_cov(combined_cov, combined_ret):
             stress_cov[i, j] = STRESS_BOND_EQUITY_CORR * vol_i * vol_j
             stress_cov[j, i] = stress_cov[i, j]
 
-    # Apply PE markdown, lagged appraisal-based reporting means PE marks down after public markets
+    # Apply PE markdown — lagged appraisal-based reporting means PE marks down after public markets
     if "Private Equity" in stress_ret.index:
         stress_ret["Private Equity"] -= STRESS_PE_RETURN_REDUCTION
 
@@ -97,11 +94,17 @@ def build_stress_cov(combined_cov, combined_ret):
 
     return pd.DataFrame(stress_cov, index=assets, columns=assets), stress_ret
 
+
 # Runs n_sims correlated annual return paths over the full horizon and compounds wealth
 # with annual withdrawals and rebalancing. Uses multivariate normal draws from the full
 # asset covariance matrix so correlations between assets are preserved each year.
-def run_simulation(weights, returns, cov, label, initial_wealth=INITIAL_WEALTH,
-                   n_sims=N_SIMULATIONS, horizon=TIME_HORIZON, withdrawal_rate=ANNUAL_WITHDRAWAL):
+def run_simulation(
+    weights, returns, cov, label,
+    initial_wealth=INITIAL_WEALTH,
+    n_sims=N_SIMULATIONS,
+    horizon=TIME_HORIZON,
+    withdrawal_rate=ANNUAL_WITHDRAWAL,
+):
     print(f"  Running {n_sims:,} simulations for: {label}...")
 
     asset_names = list(returns.index)
@@ -113,25 +116,25 @@ def run_simulation(weights, returns, cov, label, initial_wealth=INITIAL_WEALTH,
     w = w / w.sum()
 
     # Draw correlated annual returns for all assets across all sims and years at once
-    # shape is (n_sims, horizon, n_assets), then dot with weights to get portfolio returns
     np.random.seed(42)
     annual_returns   = np.random.multivariate_normal(mean=mu, cov=sigma, size=(n_sims, horizon))
     port_annual_rets = annual_returns @ w
 
-    wealth         = np.zeros((n_sims, horizon + 1))
-    wealth[:, 0]   = initial_wealth
+    wealth       = np.zeros((n_sims, horizon + 1))
+    wealth[:, 0] = initial_wealth
 
     for t in range(horizon):
-        # Grow, then withdraw, order matters since withdrawal is taken after growth
+        # Grow, then withdraw — order matters since withdrawal is taken after growth
         wealth[:, t + 1] = wealth[:, t] * (1 + port_annual_rets[:, t])
         wealth[:, t + 1] -= wealth[:, t + 1] * withdrawal_rate
         wealth[:, t + 1]  = np.maximum(wealth[:, t + 1], 0)
 
-    wealth_df = pd.DataFrame(wealth, columns=[f"Year {i}" for i in range(horizon + 1)])
+    wealth_df      = pd.DataFrame(wealth, columns=[f"Year {i}" for i in range(horizon + 1)])
     wealth_df.name = label
     return wealth_df
 
-def compute_outcomes(wealth_df, label):
+
+def compute_outcomes(wealth_df, label, horizon=TIME_HORIZON):
     terminal = wealth_df.iloc[:, -1]
 
     outcomes = {
@@ -147,7 +150,7 @@ def compute_outcomes(wealth_df, label):
         "Std Deviation":      terminal.std(),
     }
 
-    print(f"\n  === {label} — Year {TIME_HORIZON} Outcomes ===")
+    print(f"\n  === {label} — Year {horizon} Outcomes ===")
     print(f"  Median Wealth:      ${outcomes['Median Wealth']/1e6:.1f}M")
     print(f"  10th Percentile:    ${outcomes['10th Percentile']/1e6:.1f}M")
     print(f"  90th Percentile:    ${outcomes['90th Percentile']/1e6:.1f}M")
@@ -172,6 +175,7 @@ def compute_max_drawdown(wealth_paths):
         "Median Max Drawdown": np.median(drawdowns),
         "Worst 10% Drawdown":  np.percentile(drawdowns, 10),
     }
+
 
 def main():
     print("Loading market data...")
@@ -212,10 +216,10 @@ def main():
 
     print("\nComputing outcomes...")
     outcomes = [
-        compute_outcomes(sim_6040,        "60/40 Baseline"),
-        compute_outcomes(sim_public_opt,  "Public Optimized"),
-        compute_outcomes(sim_uhnw,        "UHNW + Alternatives"),
-        compute_outcomes(sim_stress,      "UHNW Stress Test"),
+        compute_outcomes(sim_6040,       "60/40 Baseline"),
+        compute_outcomes(sim_public_opt, "Public Optimized"),
+        compute_outcomes(sim_uhnw,       "UHNW + Alternatives"),
+        compute_outcomes(sim_stress,     "UHNW Stress Test"),
     ]
 
     print("\nDrawdown Analysis:")

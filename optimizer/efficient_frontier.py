@@ -1,12 +1,11 @@
 '''
-Author: Matthew Buttarazzi
+Author: Matthew R. Buttarazzi
 Date: May 2026
 Project: UHNW Strategic Asset Allocation with Alternatives
-Description: Portfolio optimizer for the UHNW asset allocation framework. Builds mean-variance 
-efficient frontiers for two universes: public assets only (baseline) and the full UHNW universe 
-with alternatives. Applies a three-tier liquidity bucket framework, individual alternatives caps, 
-and a PE mean reversion adjustment to the forward-looking return assumption. Uses scipy SLSQP 
-to minimize portfolio volatility across a range of target returns.
+Description: Portfolio optimizer for the UHNW asset allocation framework. Builds mean-variance
+efficient frontiers for two universes: public assets only (baseline) and the full UHNW universe
+with alternatives. All constraint parameters and the risk-free rate are accepted as function
+arguments so the dashboard can pass in user-selected values without touching module constants.
 '''
 
 import numpy as np
@@ -25,33 +24,30 @@ from data.market_data import (
     PE_MEAN_REVERSION,
 )
 
-# Tier 1 assets fund 0-2yr distributions and capital calls, must stay above 8% at all times
+# Tier definitions used by both the optimizer and the dashboard
 TIER1_ASSETS = ["Cash", "Long Duration UST", "TIPS", "US Agg Bonds"]
-TIER1_MIN    = 0.08
-
-# Tier 2 is intermediate liquidity — public equities and hedge funds, no explicit floor or cap
 TIER2_ASSETS = ["US Large Cap", "US Small Cap", "Intl Developed",
                 "Emerging Markets", "Real Estate (REIT)", "Commodities", "Hedge Funds"]
-
-# Tier 3 is the illiquid growth sleeve, bounded between 15% and 40% to capture illiquidity premium
-# without overcommitting capital that cant be accessed for years
 TIER3_ASSETS = ["Private Equity", "Private Credit", "Real Assets"]
-TIER3_MIN    = 0.15
-TIER3_MAX    = 0.40
 
-# Individual caps on each alternative to prevent over-concentration in any one illiquid asset
-PE_MAX = 0.20
-PC_MAX = 0.15
-HF_MAX = 0.15
-RA_MAX = 0.10
+# Default constraint values — used by standalone script, overridden by dashboard
+DEFAULT_TIER1_MIN = 0.08
+DEFAULT_TIER3_MIN = 0.15
+DEFAULT_TIER3_MAX = 0.40
+DEFAULT_PE_MAX    = 0.20
+DEFAULT_PC_MAX    = 0.15
+DEFAULT_HF_MAX    = 0.15
+DEFAULT_RA_MAX    = 0.10
+DEFAULT_RF        = 0.04
 
-# PE returns tend to revert toward their long-run average after periods of outperformance. This pulls the raw 
-# Cambridge Associates figure of 15.5% down toward the 13% long-run mean at a 30% reversion speed, giving a 
-# more defensible forward estimate.
-def adjust_pe_return(current_pe_return):
-    adjusted = current_pe_return - PE_MEAN_REVERSION * (current_pe_return - PE_LONG_RUN_MEAN)
+
+# Per Roth and Barth (Capital Allocators Podcast), PE returns tend to revert toward their long-run
+# average after periods of outperformance. This pulls the raw Cambridge Associates figure of 15.5%
+# down toward the 13% long-run mean at a 30% reversion speed, giving a more defensible forward estimate.
+def adjust_pe_return(current_pe_return, pe_long_run=PE_LONG_RUN_MEAN, pe_reversion=PE_MEAN_REVERSION):
+    adjusted = current_pe_return - pe_reversion * (current_pe_return - pe_long_run)
     print(f"  PE Return: raw={current_pe_return:.1%} -> mean-reverted={adjusted:.1%} "
-          f"(pull toward {PE_LONG_RUN_MEAN:.1%} long-run mean)")
+          f"(pull toward {pe_long_run:.1%} long-run mean)")
     return adjusted
 
 
@@ -63,7 +59,7 @@ def portfolio_volatility(weights, cov):
     return float(np.sqrt(weights @ cov @ weights))
 
 
-def sharpe_ratio(weights, returns, cov, rf=0.04):
+def sharpe_ratio(weights, returns, cov, rf=DEFAULT_RF):
     ret = portfolio_return(weights, returns)
     vol = portfolio_volatility(weights, cov)
     if vol > 0:
@@ -93,7 +89,7 @@ def optimize_portfolio(target_return, returns, cov, constraints, bounds, n_asset
     return None
 
 
-def build_public_frontier(public_returns, public_cov, n_points=50):
+def build_public_frontier(public_returns, public_cov, n_points=50, rf=DEFAULT_RF):
     assets  = list(public_returns.index)
     n       = len(assets)
     ret_arr = public_returns.values
@@ -115,14 +111,13 @@ def build_public_frontier(public_returns, public_cov, n_points=50):
             frontier.append({
                 "Expected Return": portfolio_return(w, ret_arr),
                 "Volatility":      portfolio_volatility(w, cov_arr),
-                "Sharpe":          sharpe_ratio(w, ret_arr, cov_arr),
+                "Sharpe":          sharpe_ratio(w, ret_arr, cov_arr, rf),
                 "Weights":         dict(zip(assets, w)),
             })
 
-    df = pd.DataFrame(frontier)
-    df = df.sort_values("Volatility").reset_index(drop=True)
+    df = pd.DataFrame(frontier).sort_values("Volatility").reset_index(drop=True)
 
-    # Drop the inefficient lower portion
+    # Drop the inefficient lower portion — only keep points where return increases with volatility
     clean = [df.iloc[0]]
     for i in range(1, len(df)):
         if df.iloc[i]["Expected Return"] > clean[-1]["Expected Return"]:
@@ -133,14 +128,23 @@ def build_public_frontier(public_returns, public_cov, n_points=50):
     return result_df
 
 
-def build_uhnw_frontier(combined_returns, combined_cov, n_points=50):
+def build_uhnw_frontier(
+    combined_returns, combined_cov, n_points=50,
+    rf=DEFAULT_RF,
+    tier3_min=DEFAULT_TIER3_MIN, tier3_max=DEFAULT_TIER3_MAX,
+    pe_max=DEFAULT_PE_MAX, pc_max=DEFAULT_PC_MAX,
+    hf_max=DEFAULT_HF_MAX, ra_max=DEFAULT_RA_MAX,
+    pe_long_run=PE_LONG_RUN_MEAN, pe_reversion=PE_MEAN_REVERSION,
+):
     assets = list(combined_returns.index)
     n      = len(assets)
 
     # Apply PE mean reversion before optimizing
     adj_returns = combined_returns.copy()
     if "Private Equity" in adj_returns.index:
-        adj_returns["Private Equity"] = adjust_pe_return(adj_returns["Private Equity"])
+        adj_returns["Private Equity"] = adjust_pe_return(
+            adj_returns["Private Equity"], pe_long_run, pe_reversion
+        )
 
     ret_arr = adj_returns.values
     cov_arr = combined_cov.values
@@ -151,13 +155,13 @@ def build_uhnw_frontier(combined_returns, combined_cov, n_points=50):
     bounds = []
     for asset in assets:
         if asset == "Private Equity":
-            bounds.append((0.0, PE_MAX))
+            bounds.append((0.0, pe_max))
         elif asset == "Private Credit":
-            bounds.append((0.0, PC_MAX))
+            bounds.append((0.0, pc_max))
         elif asset == "Hedge Funds":
-            bounds.append((0.0, HF_MAX))
+            bounds.append((0.0, hf_max))
         elif asset == "Real Assets":
-            bounds.append((0.0, RA_MAX))
+            bounds.append((0.0, ra_max))
         else:
             bounds.append((0.0, 0.30))
 
@@ -166,13 +170,13 @@ def build_uhnw_frontier(combined_returns, combined_cov, n_points=50):
         {"type": "eq", "fun": lambda w: np.sum(w) - 1},
 
         # Tier 1 floor — keep enough liquid assets to fund near-term needs
-        {"type": "ineq", "fun": lambda w: sum(w[idx[a]] for a in TIER1_ASSETS if a in idx) - TIER1_MIN},
+        {"type": "ineq", "fun": lambda w: sum(w[idx[a]] for a in TIER1_ASSETS if a in idx) - DEFAULT_TIER1_MIN},
 
         # Tier 3 floor — always hold some alternatives to capture illiquidity premium
-        {"type": "ineq", "fun": lambda w: sum(w[idx[a]] for a in TIER3_ASSETS if a in idx) - TIER3_MIN},
+        {"type": "ineq", "fun": lambda w: sum(w[idx[a]] for a in TIER3_ASSETS if a in idx) - tier3_min},
 
         # Tier 3 ceiling — cap illiquid exposure to stay within the liquidity budget
-        {"type": "ineq", "fun": lambda w: TIER3_MAX - sum(w[idx[a]] for a in TIER3_ASSETS if a in idx)},
+        {"type": "ineq", "fun": lambda w: tier3_max - sum(w[idx[a]] for a in TIER3_ASSETS if a in idx)},
     ]
 
     ret_min        = ret_arr.min() + 0.001
@@ -188,13 +192,12 @@ def build_uhnw_frontier(combined_returns, combined_cov, n_points=50):
             frontier.append({
                 "Expected Return":  portfolio_return(w, ret_arr),
                 "Volatility":       portfolio_volatility(w, cov_arr),
-                "Sharpe":           sharpe_ratio(w, ret_arr, cov_arr),
+                "Sharpe":           sharpe_ratio(w, ret_arr, cov_arr, rf),
                 "Tier3 Allocation": tier3_alloc,
                 "Weights":          weights_dict,
             })
 
-    df = pd.DataFrame(frontier)
-    df = df.sort_values("Volatility").reset_index(drop=True)
+    df = pd.DataFrame(frontier).sort_values("Volatility").reset_index(drop=True)
 
     # Drop the inefficient lower portion — only keep points where return increases with volatility
     clean = [df.iloc[0]]
