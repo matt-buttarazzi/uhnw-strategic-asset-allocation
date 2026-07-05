@@ -130,9 +130,7 @@ python visualization/charts.py
 
 ## Context
 
-This project reflects the analytical framework used by multifamily offices and UHNW-focused RIAs when constructing portfolios for families with $50M–$500M+ in investable assets. The $50M+ account minimum and ~$180M average account size at firms like BBR Partners means advisors routinely navigate the liquidity, complexity, and manager-selection tradeoffs modeled here.
-
-The analysis is intended as a quantitative foundation for understanding why UHNW families allocate meaningfully to alternatives — and what the long-term wealth implications of that access look like relative to traditional public-market portfolios.
+This project reflects the analytical framework used by multifamily offices and UHNW-focused RIAs when constructing portfolios for families with $50M–$500M+ in investable assets. The analysis is intended as a quantitative foundation for understanding why UHNW families allocate meaningfully to alternatives — and what the long-term wealth implications of that access look like relative to traditional public-market portfolios.
 
 ---
 
