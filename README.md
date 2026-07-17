@@ -94,21 +94,23 @@ Mean-variance optimization via `scipy.optimize.minimize` (SLSQP). The UHNW portf
 ---
 
 ## Repository Structure
+
+```
 uhnw-portfolio-optimizer/
-├── app.py                          ← Streamlit dashboard (UI only, imports from modules)
+├── app.py
 ├── data/
-│   └── market_data.py              ← Data layer: yfinance pull, CMA table, universe construction
+│   └── market_data.py
 ├── optimizer/
-│   └── efficient_frontier.py       ← Mean-variance optimizer, frontier construction, liquidity constraints
+│   └── efficient_frontier.py
 ├── simulation/
-│   └── monte_carlo.py              ← Monte Carlo engine, stress test, drawdown analysis
+│   └── monte_carlo.py
 ├── visualization/
-│   └── charts.py                   ← Four institutional-quality chart functions, return Figure objects
+│   └── charts.py
 ├── memo/
-│   └── UHNW_Portfolio_Analysis.pdf ← Investment research memo
+│   └── UHNW_Portfolio_Analysis.pdf
 ├── README.md
 └── requirements.txt
----
+```
 
 ## Setup
 

@@ -43,8 +43,7 @@ ALTS_ASSUMPTIONS = {
     "Real Assets":           (0.090,      0.110,      True,     7),
 }
 
-# CITE: Roth and Barth, Capital Allocators Podcast
-# DESC: PE returns tend to mean-revert toward their long-run average after periods of
+# PE returns tend to mean-revert toward their long-run average after periods of
 # outperformance. We model this as a dampening factor that pulls the forward-looking
 # PE return assumption toward PE_LONG_RUN_MEAN at a 30% reversion speed per period.
 PE_LONG_RUN_MEAN  = 0.130

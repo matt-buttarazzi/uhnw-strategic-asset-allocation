@@ -332,7 +332,7 @@ with st.sidebar:
     ra_max    = ra_max_pct    / 100
 
     with st.expander("PE Mean Reversion", expanded=False):
-        st.caption("Per Roth & Barth (Capital Allocators): PE returns revert toward their long-run mean after periods of outperformance.")
+        st.caption("PE returns revert toward their long-run mean after periods of outperformance.")
         pe_long_run_pct = st.slider("Long-Run Mean (%)", 8.0, 16.0, 13.0, 0.5)
         pe_rev_spd_pct  = st.slider("Reversion Speed (%)", 0, 60, 30, 5)
 

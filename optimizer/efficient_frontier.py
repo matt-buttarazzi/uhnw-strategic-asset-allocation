@@ -41,9 +41,9 @@ DEFAULT_RA_MAX    = 0.10
 DEFAULT_RF        = 0.04
 
 
-# Per Roth and Barth (Capital Allocators Podcast), PE returns tend to revert toward their long-run
-# average after periods of outperformance. This pulls the raw Cambridge Associates figure of 15.5%
-# down toward the 13% long-run mean at a 30% reversion speed, giving a more defensible forward estimate.
+# PE returns tend to revert toward their long-run average after periods of outperformance. This pulls the raw 
+# Cambridge Associates figure of 15.5% down toward the 13% long-run mean at a 30% reversion speed, giving 
+# a more defensible forward estimate.
 def adjust_pe_return(current_pe_return, pe_long_run=PE_LONG_RUN_MEAN, pe_reversion=PE_MEAN_REVERSION):
     adjusted = current_pe_return - pe_reversion * (current_pe_return - pe_long_run)
     print(f"  PE Return: raw={current_pe_return:.1%} -> mean-reverted={adjusted:.1%} "
